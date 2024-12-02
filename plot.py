@@ -7,7 +7,7 @@ from pygame.locals import *
 import serial
 
 #ser = serial.Serial('/dev/tty.usbserial', 38400, timeout=1)
-ser = serial.Serial('/dev/tty.usbmodem114202', 115200, timeout=1)
+ser = serial.Serial('/dev/tty.usbmodem14202', 115200, timeout=1)
 
 ax = ay = az = 0.0
 yaw_mode = False
