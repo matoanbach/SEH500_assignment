@@ -1,16 +1,11 @@
-/*
- * Copyright 2018-2019 NXP
- * All rights reserved.
- *
- * SPDX-License-Identifier: BSD-3-Clause
- */
-
+#include <stdio.h>
 #include "fsl_debug_console.h"
 #include "math.h"
 #include "fsl_fxos.h"
 #include "pin_mux.h"
 #include "peripherals.h"
 #include "board.h"
+#include "clock_config.h"
 
 /*******************************************************************************
  * Definitions
@@ -41,6 +36,9 @@ const uint8_t g_accel_address[] = {0x1CU, 0x1DU, 0x1EU, 0x1FU};
 /*******************************************************************************
  * Code
  ******************************************************************************/
+// Function prototype
+extern int16_t atan_asm(int16_t yData, int16_t xData);
+
 
 static void i2c_release_bus_delay(void)
 {
@@ -100,6 +98,7 @@ static void Board_UpdatePwm(uint16_t x, uint16_t y)
 
 int main(void)
 {
+
     fxos_handle_t fxosHandle = {0};
     fxos_data_t sensorData   = {0};
     fxos_config_t config     = {0};
@@ -110,6 +109,7 @@ int main(void)
     int16_t zData            = 0;
     int16_t magXData         = 0;
     int16_t magYData         = 0;
+    int16_t magZData         = 0;
     uint8_t i                = 0;
     uint8_t array_addr_size  = 0;
     status_t result          = kStatus_Fail;
@@ -189,7 +189,7 @@ int main(void)
         /* Get the magnetometer data */
         magXData = (int16_t)((uint16_t)((uint16_t)sensorData.magXMSB << 8) | (uint16_t)sensorData.magXLSB);
         magYData = (int16_t)((uint16_t)((uint16_t)sensorData.magYMSB << 8) | (uint16_t)sensorData.magYLSB);
-
+        magZData = (int16_t)((uint16_t)((uint16_t)sensorData.magZMSB << 8) | (uint16_t)sensorData.magZLSB);
 
         /* Convert raw data to angle (normalize to 0-90 degrees). No negative angles. */
         xAngle = (int16_t)floor((double)xData * (double)dataScale * 90 / 8192);
@@ -208,21 +208,33 @@ int main(void)
             zAngle *= -1;
         }
 
-        /* Calculate pitch and roll angles from accelerometer data */
-        pitchAngle = (int16_t)(atan2((double)yData, sqrt((double)xData * xData + (double)zData * zData)) * (180.0 / M_PI));
-        rollAngle = (int16_t)(atan2((double)xData, sqrt((double)yData * yData + (double)zData * zData)) * (180.0 / M_PI));
+
+        /* Using atan_asm to calculate pitch and roll angles from accelerometer data */
+        pitchAngle = (int16_t)(atan_asm(yData, (int16_t)sqrt((double)xData * xData + (double)zData * zData)));
+        rollAngle = (int16_t)(atan_asm(xData, (int16_t)sqrt((double)yData * yData + (double)zData * zData)));
 
         /* Calculate yaw angle from magnetometer data */
-        yawAngle = (int16_t)(atan2((double)magYData, (double)magXData) * (180.0 / M_PI));
-        if (yawAngle < 0)
-        {
-            yawAngle += 360;
-        }
+        yawAngle = (int16_t)(atan_asm((double)magYData, (double)magXData)) * 10;
+//        yawAngle = (int16_t)(atan_asm((int16_t)sqrt((double)magXData * magXData + (double)magYData * magYData), magZData));
+//        yawAngle = (int16_t)(atan_asm((int16_t)sqrt((double)xData * xData + (double)yData * yData), zData));
+        yawAngle %= 360;
+
+        /* Using builtin atan2 to calculate pitch and roll angles from accelerometer data */
+//        pitchAngle = (int16_t)(atan2((double)yData, sqrt((double)xData * xData + (double)zData * zData)) * (180.0 / M_PI));
+//        rollAngle = (int16_t)(atan2((double)xData, sqrt((double)yData * yData + (double)zData * zData)) * (180.0 / M_PI));
+//
+//        /* Calculate yaw angle from magnetometer data */
+//        yawAngle = (int16_t)(atan2((double)magYData, (double)magXData) * (180.0 / M_PI));
+//        if (yawAngle < 0)
+//        {
+//            yawAngle += 360;
+//        }
 
         /* Update the duty cycle of PWM */
         Board_UpdatePwm(xAngle, yAngle);
 
         /* Print out the angle data. */
         PRINTF("%2d, %2d, %3d\r\n", pitchAngle, rollAngle, yawAngle);
+
     }
 }
